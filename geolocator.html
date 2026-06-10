@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <!-- ═══ SEO META TAGS (updated dynamically per search) ═══════════ -->
+  <title>GeoLocator – Location Intelligence</title>
+  <meta name="description" content="Search any place to get coordinates, address, map, and shareable link." />
+  <meta property="og:title"       content="GeoLocator – Location Intelligence" />
+  <meta property="og:description" content="Search any place to get coordinates, address, map, and shareable link." />
+  <meta property="og:type"        content="website" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+
+  <style>
+    /* ════════════════════════════════════════════════════════════════
+       DESIGN TOKENS
+    ════════════════════════════════════════════════════════════════ */
+    :root {
+      --bg:          #0d0f14;
+      --surface:     #161a24;
+      --surface2:    #1c2130;
+      --border:      #252b3b;
+      --accent:      #4f8ef7;
+      --accent-glow: rgba(79,142,247,.22);
+      --text:        #e8eaf0;
+      --muted:       #6b7280;
+      --success:     #34d399;
+      --warning:     #fbbf24;
+      --error:       #f87171;
+      --gps:         #a78bfa;
+      --reverse:     #38bdf8;
+      --google:      #4ade80;
+      --radius:      14px;
+      --font-head:   'Space Grotesk', sans-serif;
+      --font-body:   'Inter', sans-serif;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       RESET & BASE
+    ════════════════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 60px;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       CARD
+    ════════════════════════════════════════════════════════════════ */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 32px 32px;
+      width: 100%;
+      max-width: 700px;
+      box-shadow: 0 0 0 1px var(--border),
+                  0 -3px 0 0 var(--accent),
+                  0 28px 70px rgba(0,0,0,.65);
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       HEADER
+    ════════════════════════════════════════════════════════════════ */
+    .header { margin-bottom: 28px; }
+
+    .eyebrow {
+      font-size: 11px; font-weight: 500; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--accent); margin-bottom: 6px;
+    }
+
+    h1 { font-family: var(--font-head); font-size: 28px; font-weight: 700; line-height: 1.15; }
+
+    .subtitle { margin-top: 6px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+    /* ════════════════════════════════════════════════════════════════
+       SECTION DIVIDERS
+    ════════════════════════════════════════════════════════════════ */
+    .section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+
+    .section-label {
+      font-size: 11px; font-weight: 500; letter-spacing: .1em;
+      text-transform: uppercase; margin-bottom: 12px;
+    }
+    .section-label.search-label  { color: var(--accent); }
+    .section-label.gps-label     { color: var(--gps); }
+    .section-label.reverse-label { color: var(--reverse); }
+
+    /* ════════════════════════════════════════════════════════════════
+       INPUTS
+    ════════════════════════════════════════════════════════════════ */
+    .input-group { display: flex; gap: 10px; margin-bottom: 4px; }
+
+    .input-group.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    input[type="text"], input[type="number"] {
+      flex: 1; width: 100%;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); font-family: var(--font-body); font-size: 15px;
+      padding: 11px 14px; outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    input::placeholder { color: var(--muted); }
+
+    /* ════════════════════════════════════════════════════════════════
+       BUTTONS  (base)
+    ════════════════════════════════════════════════════════════════ */
+    button {
+      background: var(--accent); border: none; border-radius: 10px;
+      color: #fff; cursor: pointer; font-family: var(--font-head);
+      font-size: 14px; font-weight: 500; padding: 11px 18px;
+      white-space: nowrap; transition: opacity .15s, transform .1s; flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    button:hover   { opacity: .88; }
+    button:active  { transform: scale(.97); }
+    button:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+    .btn-gps     { background: var(--gps);    width: 100%; justify-content: center; padding: 12px; }
+    .btn-reverse { background: var(--reverse); color: #0d0f14; }
+
+    /* ════════════════════════════════════════════════════════════════
+       RESULT BLOCK  (search panel)
+    ════════════════════════════════════════════════════════════════ */
+    .result-block { display: none; margin-top: 16px; }
+
+    /* ── Place name headline ───────────────────────────────────────── */
+    .place-headline {
+      font-family: var(--font-head); font-size: 18px; font-weight: 700;
+      color: var(--text); margin-bottom: 4px; line-height: 1.3;
+    }
+    .place-address {
+      font-size: 13px; color: var(--muted); line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    /* ── Coord tiles ──────────────────────────────────────────────── */
+    .coords-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+
+    .coord-tile { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .coord-label {
+      font-size: 10px; font-weight: 500; letter-spacing: .1em;
+      text-transform: uppercase; margin-bottom: 5px;
+    }
+    .coord-tile.lat .coord-label { color: var(--success); }
+    .coord-tile.lng .coord-label { color: var(--warning); }
+    .coord-value { font-family: var(--font-head); font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
+    .coord-tile.lat .coord-value { color: var(--success); }
+    .coord-tile.lng .coord-value { color: var(--warning); }
+
+    /* ── Intelligence action buttons row ─────────────────────────── */
+    .action-bar {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+    }
+
+    /* Smaller pill-shaped action buttons */
+    .action-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); cursor: pointer;
+      font-family: var(--font-body); font-size: 13px; font-weight: 500;
+      padding: 8px 14px; white-space: nowrap;
+      transition: background .15s, border-color .15s, transform .1s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .action-btn:hover  { background: var(--border); border-color: var(--accent); }
+    .action-btn:active { transform: scale(.96); }
+
+    /* Colour variants for each action type */
+    .action-btn.osm    { color: var(--accent); }
+    .action-btn.gmaps  { color: var(--google); }
+    .action-btn.share  { color: var(--gps); }
+    .action-btn.copy-c { color: var(--success); }
+    .action-btn.copy-a { color: var(--reverse); }
+
+    /* ── QR code box ──────────────────────────────────────────────── */
+    .qr-row {
+      display: flex; align-items: flex-start; gap: 16px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+    }
+
+    #qr-canvas { border-radius: 6px; flex-shrink: 0; }
+
+    .qr-meta { flex: 1; min-width: 0; }
+    .qr-label {
+      font-size: 10px; font-weight: 500; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+    }
+    .qr-url {
+      font-size: 12px; color: var(--accent); word-break: break-all;
+      line-height: 1.5;
+    }
+
+    /* ── Reverse geocode address box ──────────────────────────────── */
+    .address-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      font-size: 14px; line-height: 1.6; color: var(--text);
+    }
+    .address-box .addr-label {
+      font-size: 10px; font-weight: 500; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--reverse); margin-bottom: 6px;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       ERROR MESSAGES
+    ════════════════════════════════════════════════════════════════ */
+    .error-msg {
+      display: none; color: var(--error); font-size: 13px;
+      margin-top: 10px; padding: 9px 13px;
+      background: rgba(248,113,113,.07); border: 1px solid rgba(248,113,113,.22);
+      border-radius: 8px;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       TOAST  (clipboard feedback)
+    ════════════════════════════════════════════════════════════════ */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); font-size: 13px; font-family: var(--font-body);
+      padding: 10px 20px; border-radius: 30px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.5);
+      opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none;
+      white-space: nowrap; z-index: 9999;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ════════════════════════════════════════════════════════════════
+       MAP
+    ════════════════════════════════════════════════════════════════ */
+    #map-container {
+      display: none; margin-top: 20px;
+      border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    #map { height: 320px; width: 100%; background: var(--bg); }
+
+    /* Dark tile filter */
+    .leaflet-tile-pane {
+      filter: invert(100%) hue-rotate(180deg) brightness(0.85) saturate(0.8);
+    }
+    .leaflet-marker-icon, .leaflet-marker-shadow,
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+      filter: invert(100%) hue-rotate(180deg);
+    }
+    .leaflet-popup-content-wrapper {
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+      font-family: var(--font-body); font-size: 13px;
+    }
+    .leaflet-popup-tip { background: var(--surface); }
+    .leaflet-control-zoom a {
+      background: var(--surface) !important; color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       FOOTER
+    ════════════════════════════════════════════════════════════════ */
+    footer { margin-top: 32px; font-size: 12px; color: var(--muted); text-align: center; }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ════════════════════════════════════════════════════════════════
+       RESPONSIVE
+    ════════════════════════════════════════════════════════════════ */
+    @media (max-width: 500px) {
+      .card { padding: 24px 16px 20px; }
+      h1    { font-size: 22px; }
+      .coords-grid         { grid-template-columns: 1fr; }
+      .input-group.two-col { grid-template-columns: 1fr; }
+      #map { height: 240px; }
+      .qr-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- ── HEADER ─────────────────────────────────────────────────── -->
+  <div class="header">
+    <p class="eyebrow">Location Intelligence · OpenStreetMap · Nominatim</p>
+    <h1>GeoLocator</h1>
+    <p class="subtitle">Search a place, use your GPS, or decode coordinates — with shareable links, QR codes, and Google Maps.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       PANEL 1 – Search by place name
+  ══════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <p class="section-label search-label">🔍 Search by place name</p>
+
+    <div class="input-group">
+      <input type="text" id="location-input" placeholder="e.g. Eiffel Tower, Paris"
+             autocomplete="off" aria-label="Place name" />
+      <button id="search-btn" onclick="lookupLocation()">Search</button>
+    </div>
+
+    <div class="error-msg" id="search-error"></div>
+
+    <!-- ── Rich result panel ───────────────────────────────────── -->
+    <div class="result-block" id="search-result">
+
+      <!-- Place headline + full address -->
+      <div class="place-headline" id="res-name"></div>
+      <div class="place-address"  id="res-address"></div>
+
+      <!-- Lat / Lng tiles -->
+      <div class="coords-grid">
+        <div class="coord-tile lat">
+          <div class="coord-label">Latitude</div>
+          <div class="coord-value" id="res-lat">—</div>
+        </div>
+        <div class="coord-tile lng">
+          <div class="coord-label">Longitude</div>
+          <div class="coord-value" id="res-lng">—</div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="action-bar">
+
+        <!-- Open in OpenStreetMap -->
+        <a id="btn-osm" href="#" target="_blank" rel="noopener"
+           class="action-btn osm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          OpenStreetMap
+        </a>
+
+        <!-- Open in Google Maps -->
+        <a id="btn-gmaps" href="#" target="_blank" rel="noopener"
+           class="action-btn gmaps">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Google Maps
+        </a>
+
+        <!-- Copy coordinates -->
+        <button class="action-btn copy-c" onclick="copyCoords()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy Coords
+        </button>
+
+        <!-- Copy address -->
+        <button class="action-btn copy-a" onclick="copyAddress()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Copy Address
+        </button>
+
+        <!-- Share link -->
+        <button class="action-btn share" onclick="shareLink()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share Link
+        </button>
+
+      </div><!-- /.action-bar -->
+
+      <!-- QR Code row -->
+      <div class="qr-row">
+        <canvas id="qr-canvas" width="80" height="80"></canvas>
+        <div class="qr-meta">
+          <div class="qr-label">Scan to open this location</div>
+          <div class="qr-url" id="qr-url-display"></div>
+        </div>
+      </div>
+
+    </div><!-- /#search-result -->
+  </div><!-- /.section -->
+
+  <!-- ══════════════════════════════════════════════════════════════
+       PANEL 2 – GPS
+  ══════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <p class="section-label gps-label">📍 Use my current location</p>
+
+    <button class="btn-gps" id="gps-btn" onclick="getMyLocation()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/>
+        <line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/>
+        <line x1="19" y1="12" x2="22" y2="12"/>
+      </svg>
+      Use My Location
+    </button>
+
+    <div class="error-msg" id="gps-error"></div>
+
+    <div class="result-block" id="gps-result">
+      <div class="place-address" id="gps-place-name"></div>
+      <div class="coords-grid">
+        <div class="coord-tile lat"><div class="coord-label">Latitude</div><div class="coord-value" id="gps-lat">—</div></div>
+        <div class="coord-tile lng"><div class="coord-label">Longitude</div><div class="coord-value" id="gps-lng">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       PANEL 3 – Reverse geocoding
+  ══════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <p class="section-label reverse-label">🗺 Reverse geocode coordinates</p>
+
+    <div class="input-group two-col">
+      <input type="number" id="rev-lat" placeholder="Latitude  e.g. 17.6868" step="any" aria-label="Latitude" />
+      <input type="number" id="rev-lng" placeholder="Longitude  e.g. 83.2185" step="any" aria-label="Longitude" />
+    </div>
+    <div style="margin-top:10px;">
+      <button class="btn-reverse" id="rev-btn" onclick="reverseGeocode()">Find Address</button>
+    </div>
+
+    <div class="error-msg" id="rev-error"></div>
+
+    <div class="result-block" id="rev-result">
+      <div class="address-box">
+        <div class="addr-label">Full Address</div>
+        <div id="rev-address"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       SHARED MAP
+  ══════════════════════════════════════════════════════════════════ -->
+  <div id="map-container">
+    <div id="map"></div>
+  </div>
+
+</div><!-- /.card -->
+
+<footer>
+  Powered by <a href="https://nominatim.openstreetmap.org" target="_blank" rel="noopener">Nominatim</a>
+  &amp; © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
+  · Map by <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>
+</footer>
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<!-- Leaflet JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<!-- QR Code library (pure JS, no dependencies) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════════════════════════ */
+let map         = null;   // Leaflet map instance
+let marker      = null;   // Leaflet marker
+let currentLat  = null;   // last searched latitude
+let currentLng  = null;   // last searched longitude
+let currentName = '';     // short display name (first segment of address)
+let currentAddr = '';     // full display_name from Nominatim
+
+/* ════════════════════════════════════════════════════════════════════
+   ROUTING  –  read URL on load, write URL on search
+   Supports two formats:
+     ?location=Vizag            (query-param – works on any static host)
+     #/location/visakhapatnam   (hash route  – no server config needed)
+════════════════════════════════════════════════════════════════════ */
+
+/**
+ * getLocationFromURL()
+ * Reads either ?location=X  OR  #/location/X from the current URL.
+ * Returns the location string, or null if none found.
+ */
+function getLocationFromURL() {
+  // 1. Check query param: ?location=...
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('location') && params.get('location').trim()) {
+    return decodeURIComponent(params.get('location').trim());
+  }
+
+  // 2. Check hash route: #/location/...
+  const hash = window.location.hash; // e.g. "#/location/visakhapatnam"
+  const hashMatch = hash.match(/^#\/location\/(.+)$/i);
+  if (hashMatch && hashMatch[1].trim()) {
+    // Convert URL-encoded slug back to readable: "visakhapatnam" → "visakhapatnam"
+    return decodeURIComponent(hashMatch[1].replace(/-/g, ' ').trim());
+  }
+
+  return null;
+}
+
+/**
+ * updateURL(locationName)
+ * Writes the searched location into the URL without reloading the page.
+ * Uses the query-param style: ?location=Hyderabad
+ * Also updates the page <title> and OG meta tags for shareability.
+ */
+function updateURL(locationName) {
+  // Build the new URL
+  const slug    = encodeURIComponent(locationName);
+  const newURL  = `${window.location.pathname}?location=${slug}`;
+  const pageTitle = `${locationName} – GeoLocator`;
+
+  // pushState updates URL + browser history without a page reload
+  window.history.pushState({ location: locationName }, pageTitle, newURL);
+
+  // Update the browser tab title
+  document.title = pageTitle;
+
+  // Update OG meta for when the page is shared from this state
+  document.querySelector('meta[property="og:title"]').setAttribute('content', pageTitle);
+  document.querySelector('meta[name="description"]').setAttribute('content',
+    `Coordinates and map for ${locationName}. Latitude: ${(currentLat||'').toString()}, Longitude: ${(currentLng||'').toString()}`
+  );
+}
+
+// Handle browser back/forward buttons
+window.addEventListener('popstate', (e) => {
+  const loc = getLocationFromURL();
+  if (loc) {
+    document.getElementById('location-input').value = loc;
+    lookupLocation(true); // true = don't push another history state
+  }
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+════════════════════════════════════════════════════════════════════ */
+document.getElementById('location-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') lookupLocation();
+});
+document.getElementById('rev-lat').addEventListener('keydown', e => {
+  if (e.key === 'Enter') reverseGeocode();
+});
+document.getElementById('rev-lng').addEventListener('keydown', e => {
+  if (e.key === 'Enter') reverseGeocode();
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   1. FORWARD GEOCODING  –  place name → lat/lng
+════════════════════════════════════════════════════════════════════ */
+async function lookupLocation(isPopState = false) {
+  const input    = document.getElementById('location-input');
+  const location = input.value.trim();
+
+  if (!location) {
+    showError('search-error', 'Please enter a location name first.');
+    return;
+  }
+
+  setLoading('search-btn', true, 'Searching…');
+  hideError('search-error');
+  document.getElementById('search-result').style.display = 'none';
+
+  try {
+    // Call Nominatim search endpoint
+    const url  = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1&addressdetails=1`;
+    const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    const data = await res.json();
+
+    if (!data || data.length === 0) {
+      showError('search-error', `No results found for "${location}". Try a different name.`);
+      return;
+    }
+
+    const place = data[0];
+    currentLat  = parseFloat(place.lat);
+    currentLng  = parseFloat(place.lon);
+    currentAddr = place.display_name;
+
+    // Extract a short name: first part before the first comma
+    currentName = place.display_name.split(',')[0].trim();
+
+    // Populate result panel
+    document.getElementById('res-name').textContent    = currentName;
+    document.getElementById('res-address').textContent = currentAddr;
+    document.getElementById('res-lat').textContent     = currentLat.toFixed(6);
+    document.getElementById('res-lng').textContent     = currentLng.toFixed(6);
+
+    // Set external links
+    const osmURL   = `https://www.openstreetmap.org/?mlat=${currentLat}&mlon=${currentLng}&zoom=14`;
+    const gmapsURL = `https://www.google.com/maps/search/?api=1&query=${currentLat},${currentLng}`;
+    document.getElementById('btn-osm').href   = osmURL;
+    document.getElementById('btn-gmaps').href = gmapsURL;
+
+    // Show the result block
+    document.getElementById('search-result').style.display = 'block';
+
+    // Update URL (unless we got here from popstate to avoid duplicate history)
+    if (!isPopState) updateURL(location);
+
+    // Generate QR code for the shareable URL
+    const shareURL = `${window.location.origin}${window.location.pathname}?location=${encodeURIComponent(location)}`;
+    generateQR(shareURL);
+
+    // Show on map
+    showOnMap(currentLat, currentLng, `<strong>${currentName}</strong><br><small>${currentLat.toFixed(5)}, ${currentLng.toFixed(5)}</small>`);
+
+  } catch (err) {
+    console.error(err);
+    showError('search-error', 'Could not reach the API. Check your internet connection.');
+  } finally {
+    setLoading('search-btn', false, 'Search');
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   2. GPS  –  get device coordinates
+════════════════════════════════════════════════════════════════════ */
+function getMyLocation() {
+  if (!navigator.geolocation) {
+    showError('gps-error', 'Your browser does not support geolocation.');
+    return;
+  }
+
+  setGpsBtnState(true, 'Locating…');
+  hideError('gps-error');
+  document.getElementById('gps-result').style.display = 'none';
+
+  navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsError, {
+    enableHighAccuracy: true, timeout: 10000, maximumAge: 0
+  });
+}
+
+async function onGpsSuccess(position) {
+  const lat = position.coords.latitude;
+  const lng = position.coords.longitude;
+
+  try {
+    const name = await fetchReverseAddress(lat, lng);
+    document.getElementById('gps-place-name').textContent = name || 'Your current location';
+    document.getElementById('gps-lat').textContent        = lat.toFixed(6);
+    document.getElementById('gps-lng').textContent        = lng.toFixed(6);
+    document.getElementById('gps-result').style.display  = 'block';
+    showOnMap(lat, lng, name || 'Your location');
+  } catch {
+    document.getElementById('gps-place-name').textContent = 'Your current location';
+    document.getElementById('gps-lat').textContent        = lat.toFixed(6);
+    document.getElementById('gps-lng').textContent        = lng.toFixed(6);
+    document.getElementById('gps-result').style.display  = 'block';
+    showOnMap(lat, lng, 'Your location');
+  } finally {
+    setGpsBtnState(false, '');
+  }
+}
+
+function onGpsError(error) {
+  const messages = {
+    1: 'Location access was denied. Allow location permission in your browser settings.',
+    2: 'Your position could not be determined. Check your device settings.',
+    3: 'Location request timed out. Move to an area with better GPS signal.'
+  };
+  showError('gps-error', messages[error.code] || 'An unknown error occurred.');
+  setGpsBtnState(false, '');
+}
+
+function setGpsBtnState(loading, label) {
+  const btn = document.getElementById('gps-btn');
+  btn.disabled = loading;
+  btn.innerHTML = loading
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="30 70" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle></svg> ${label}`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> Use My Location`;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   3. REVERSE GEOCODING  –  lat/lng → address
+════════════════════════════════════════════════════════════════════ */
+async function reverseGeocode() {
+  const latVal = document.getElementById('rev-lat').value.trim();
+  const lngVal = document.getElementById('rev-lng').value.trim();
+
+  if (!latVal || !lngVal) { showError('rev-error', 'Enter both latitude and longitude.'); return; }
+
+  const lat = parseFloat(latVal);
+  const lng = parseFloat(lngVal);
+
+  if (isNaN(lat) || isNaN(lng)) { showError('rev-error', 'Enter valid numbers.'); return; }
+  if (lat < -90  || lat > 90)   { showError('rev-error', 'Latitude must be −90 to 90.'); return; }
+  if (lng < -180 || lng > 180)  { showError('rev-error', 'Longitude must be −180 to 180.'); return; }
+
+  setLoading('rev-btn', true, 'Looking up…');
+  hideError('rev-error');
+  document.getElementById('rev-result').style.display = 'none';
+
+  try {
+    const address = await fetchReverseAddress(lat, lng);
+    if (!address) { showError('rev-error', 'No address found — coordinates may be in an unmapped area.'); return; }
+
+    document.getElementById('rev-address').textContent  = address;
+    document.getElementById('rev-result').style.display = 'block';
+    showOnMap(lat, lng, address);
+  } catch {
+    showError('rev-error', 'Could not reach the API. Check your internet connection.');
+  } finally {
+    setLoading('rev-btn', false, 'Find Address');
+  }
+}
+
+async function fetchReverseAddress(lat, lng) {
+  const url  = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`;
+  const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  const data = await res.json();
+  return data.error ? null : (data.display_name || null);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   MAP
+════════════════════════════════════════════════════════════════════ */
+function showOnMap(lat, lng, popupHTML) {
+  const container = document.getElementById('map-container');
+  container.style.display = 'block';
+
+  if (!map) {
+    map = L.map('map').setView([lat, lng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(map);
+    marker = L.marker([lat, lng]).addTo(map).bindPopup(popupHTML).openPopup();
+  } else {
+    map.flyTo([lat, lng], 13, { duration: 1.2 });
+    marker.setLatLng([lat, lng]).setPopupContent(popupHTML).openPopup();
+  }
+
+  setTimeout(() => {
+    container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    map.invalidateSize();
+  }, 120);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   QR CODE GENERATOR
+   Uses the QRCode.js library loaded from CDN.
+   We render into a hidden temporary div, then copy the image
+   data onto our <canvas> so it fits the dark-themed layout.
+════════════════════════════════════════════════════════════════════ */
+function generateQR(url) {
+  const canvas  = document.getElementById('qr-canvas');
+  const display = document.getElementById('qr-url-display');
+
+  display.textContent = url;
+
+  // Create a temporary off-screen container
+  const tmp = document.createElement('div');
+  tmp.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
+  document.body.appendChild(tmp);
+
+  // Generate QR with library
+  new QRCode(tmp, {
+    text:         url,
+    width:        80,
+    height:       80,
+    colorDark:    '#e8eaf0',   // light pixels (matches --text)
+    colorLight:   '#161a24',   // dark pixels  (matches --surface)
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  // Wait a tick for the library to render, then copy to our canvas
+  setTimeout(() => {
+    const img = tmp.querySelector('img');
+    if (img && img.complete) {
+      drawQRToCanvas(canvas, img);
+    } else if (img) {
+      img.onload = () => drawQRToCanvas(canvas, img);
+    } else {
+      // Library may have rendered a canvas directly — copy it
+      const srcCanvas = tmp.querySelector('canvas');
+      if (srcCanvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(srcCanvas, 0, 0, 80, 80);
+      }
+    }
+    document.body.removeChild(tmp);
+  }, 100);
+}
+
+function drawQRToCanvas(destCanvas, img) {
+  const ctx = destCanvas.getContext('2d');
+  ctx.clearRect(0, 0, 80, 80);
+  ctx.drawImage(img, 0, 0, 80, 80);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ACTION HANDLERS
+════════════════════════════════════════════════════════════════════ */
+
+/** Copy "lat, lng" to clipboard */
+function copyCoords() {
+  if (currentLat === null) return;
+  copyToClipboard(`${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}`, 'Coordinates copied!');
+}
+
+/** Copy full address to clipboard */
+function copyAddress() {
+  if (!currentAddr) return;
+  copyToClipboard(currentAddr, 'Address copied!');
+}
+
+/** Copy the shareable URL to clipboard */
+function shareLink() {
+  const url = window.location.href;
+  copyToClipboard(url, 'Link copied to clipboard!');
+}
+
+/** Core clipboard helper + toast notification */
+function copyToClipboard(text, successMsg) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => showToast(successMsg))
+      .catch(() => fallbackCopy(text, successMsg));
+  } else {
+    fallbackCopy(text, successMsg);
+  }
+}
+
+/** Fallback for browsers without the Clipboard API */
+function fallbackCopy(text, successMsg) {
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+  document.body.appendChild(el);
+  el.focus(); el.select();
+  try {
+    document.execCommand('copy');
+    showToast(successMsg);
+  } catch {
+    showToast('Could not copy — please copy manually.');
+  }
+  document.body.removeChild(el);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   TOAST  (brief feedback notification)
+════════════════════════════════════════════════════════════════════ */
+let toastTimer = null;
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   GENERIC UI HELPERS
+════════════════════════════════════════════════════════════════════ */
+function setLoading(btnId, isLoading, label) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = isLoading;
+  if (label) btn.textContent = label;
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function hideError(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   BOOT  –  read URL params on page load
+════════════════════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', () => {
+  const loc = getLocationFromURL();
+  if (loc) {
+    // Pre-fill the search box and run the search automatically
+    document.getElementById('location-input').value = loc;
+    lookupLocation(true); // true = this is a restore, don't push new history state
+  }
+});
+</script>
+
+</body>
+</html>
